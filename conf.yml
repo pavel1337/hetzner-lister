@@ -1,0 +1,6 @@
+cloud_tokens:
+  - "cloudtoken1"
+  - "cloudtoken2"
+
+robot_creds:
+  - { user: "user1", password: "password1" }
