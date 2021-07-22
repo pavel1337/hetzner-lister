@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 
@@ -65,6 +66,7 @@ func CloudIps(token string) ([]string, error) {
 	var ips []string
 	client := hcloud.NewClient(hcloud.WithToken(token))
 
+	// take public ips from all servers
 	servers, err := client.Server.All(context.Background())
 	if err != nil {
 		return ips, err
@@ -73,6 +75,7 @@ func CloudIps(token string) ([]string, error) {
 		ips = append(ips, s.PublicNet.IPv4.IP.String())
 	}
 
+	// take floating ips from all servers
 	fips, err := client.FloatingIP.All(context.Background())
 	if err != nil {
 		return ips, err
@@ -80,6 +83,16 @@ func CloudIps(token string) ([]string, error) {
 	for _, fip := range fips {
 		ips = append(ips, fip.IP.String())
 	}
+
+	// take ips from all loadbalancers
+	lbips, err := client.LoadBalancer.All(context.Background())
+	if err != nil {
+		return ips, err
+	}
+	for _, lbip := range lbips {
+		ips = append(ips, lbip.PublicNet.IPv4.IP.String())
+	}
+
 	return ips, nil
 }
 
@@ -126,6 +139,55 @@ func RobotIps(user, password string) ([]string, error) {
 	}
 	for _, s := range servers {
 		ips = append(ips, s.Server.IP...)
+
+		// add all server's subnets' addresses
+		for _, subnet := range s.Server.Subnet {
+			if !validIPv4Address(subnet.IP) {
+				continue
+			}
+			ipsfs, err := ipsFromSubnet(
+				fmt.Sprintf("%s/%s", subnet.IP, subnet.Mask),
+			)
+			if err != nil {
+				fmt.Println(err)
+			}
+			ips = append(ips, ipsfs...)
+		}
 	}
 	return ips, nil
+}
+
+func ipsFromSubnet(cidr string) ([]string, error) {
+	ip, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, err
+	}
+
+	var ips []string
+	for ip := ip.Mask(ipnet.Mask); ipnet.Contains(ip); inc(ip) {
+		ips = append(ips, ip.String())
+	}
+
+	// remove network address and broadcast address
+	lenIPs := len(ips)
+	switch {
+	case lenIPs < 2:
+		return ips, nil
+
+	default:
+		return ips[1 : len(ips)-1], nil
+	}
+}
+
+func inc(ip net.IP) {
+	for j := len(ip) - 1; j >= 0; j-- {
+		ip[j]++
+		if ip[j] > 0 {
+			break
+		}
+	}
+}
+
+func validIPv4Address(ip string) bool {
+	return net.ParseIP(ip).To4() != nil
 }
