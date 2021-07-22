@@ -168,15 +168,7 @@ func ipsFromSubnet(cidr string) ([]string, error) {
 		ips = append(ips, ip.String())
 	}
 
-	// remove network address and broadcast address
-	lenIPs := len(ips)
-	switch {
-	case lenIPs < 2:
-		return ips, nil
-
-	default:
-		return ips[1 : len(ips)-1], nil
-	}
+	return ips, nil
 }
 
 func inc(ip net.IP) {
